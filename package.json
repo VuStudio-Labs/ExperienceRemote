@@ -2,6 +2,7 @@
   "name": "experience-remote",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.26.1",
   "description": "Web remote control for media servers",
   "scripts": {
     "dev:web": "pnpm --filter web-remote dev",
