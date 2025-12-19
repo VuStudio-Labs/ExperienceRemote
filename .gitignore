@@ -31,3 +31,9 @@ release/
 
 # Testing
 coverage/
+
+# Claude Code
+.claude/
+
+# Temp files
+nul
