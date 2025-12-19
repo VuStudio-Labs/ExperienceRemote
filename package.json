@@ -1,0 +1,18 @@
+{
+  "name": "experience-remote",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web remote control for media servers",
+  "scripts": {
+    "dev:web": "pnpm --filter web-remote dev",
+    "dev:server": "pnpm --filter signaling-server dev",
+    "dev:desktop": "pnpm --filter desktop dev",
+    "build:web": "pnpm --filter web-remote build",
+    "build:server": "pnpm --filter signaling-server build",
+    "build:desktop": "pnpm --filter desktop build",
+    "dev": "pnpm run --parallel dev:web dev:server dev:desktop"
+  },
+  "keywords": ["remote", "control", "webrtc", "electron", "media-server"],
+  "author": "",
+  "license": "MIT"
+}
