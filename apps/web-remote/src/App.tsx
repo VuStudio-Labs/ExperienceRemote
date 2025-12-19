@@ -7,7 +7,7 @@ import { Keyboard } from './components/Keyboard';
 import { ConnectionScreen } from './components/ConnectionScreen';
 import { useWebRTC } from './hooks/useWebRTC';
 import { useGyroscope } from './hooks/useGyroscope';
-import { connectSocket } from './lib/signaling';
+import { connectSocket, getRoomCodeFromUrl } from './lib/signaling';
 
 function App() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -27,10 +27,9 @@ function App() {
     sensitivity: 1.0,
   });
 
-  // Extract room code from URL and connect
+  // Extract room code from URL (query param or path) and connect
   useEffect(() => {
-    const path = window.location.pathname;
-    const code = path.replace('/', '').toUpperCase();
+    const code = getRoomCodeFromUrl();
 
     if (code && code.length === 6) {
       setRoomCode(code);

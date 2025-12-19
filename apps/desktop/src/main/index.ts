@@ -1,17 +1,19 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import { SignalingClient } from './signaling';
+import { EmbeddedSignalingServer } from './embedded-server';
+import { TunnelManager } from './tunnel';
 import { InputController } from './input';
 import { OSCSender } from './osc';
 import { generateQRCode } from './qr';
 
 let mainWindow: BrowserWindow | null = null;
-let signalingClient: SignalingClient | null = null;
+let embeddedServer: EmbeddedSignalingServer | null = null;
+let tunnelManager: TunnelManager | null = null;
 let inputController: InputController | null = null;
 let oscSender: OSCSender | null = null;
 
-const SIGNALING_URL = process.env.SIGNALING_URL || 'http://localhost:3001';
-const WEB_REMOTE_URL = process.env.WEB_REMOTE_URL || 'http://localhost:5173';
+const WEB_REMOTE_URL = process.env.WEB_REMOTE_URL || 'https://experience-remote.vercel.app';
+const LOCAL_PORT = 3001;
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -54,41 +56,72 @@ async function initializeServices() {
     console.error('Failed to initialize OSC sender:', err);
   }
 
-  // Initialize signaling client
-  signalingClient = new SignalingClient(SIGNALING_URL);
+  // Initialize embedded signaling server
+  embeddedServer = new EmbeddedSignalingServer(LOCAL_PORT);
 
-  // Wait for connection
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Create a room
   try {
-    const roomCode = await signalingClient.createRoom();
-    console.log('Room created:', roomCode);
+    await embeddedServer.start();
+    console.log('Embedded signaling server started');
+  } catch (err) {
+    console.error('Failed to start embedded server:', err);
+    return;
+  }
 
-    // Generate QR code
-    const remoteUrl = `${WEB_REMOTE_URL}/${roomCode}`;
-    const qrDataUrl = await generateQRCode(remoteUrl);
+  // Initialize tunnel
+  tunnelManager = new TunnelManager();
 
-    // Store room data
-    currentRoomData = { roomCode, qrDataUrl, remoteUrl };
+  try {
+    const tunnelUrl = await tunnelManager.connect(LOCAL_PORT);
+    console.log('Tunnel connected:', tunnelUrl);
 
-    // Send to renderer
-    mainWindow?.webContents.send('room-created', currentRoomData);
+    // Create room and generate QR code
+    await createRoomAndQR(tunnelUrl);
 
-    // Listen for messages relayed through signaling server
-    signalingClient.onMessage((message: any) => {
-      handleRemoteMessage(message);
-    });
-
-    // Handle connection state changes
-    signalingClient.onClientJoined(() => {
-      console.log('Client connected!');
-      mainWindow?.webContents.send('connection-state', 'connected');
+    // Handle tunnel URL changes (reconnection)
+    tunnelManager.onUrlChanged(async (newUrl) => {
+      console.log('Tunnel URL changed:', newUrl);
+      await createRoomAndQR(newUrl);
     });
 
   } catch (err) {
-    console.error('Failed to create room:', err);
+    console.error('Failed to create tunnel:', err);
+    // Fall back to local-only mode
+    console.log('Running in local-only mode');
+    await createRoomAndQR(`http://localhost:${LOCAL_PORT}`);
   }
+
+  // Listen for messages from connected clients
+  embeddedServer.onMessage((message: any) => {
+    handleRemoteMessage(message);
+  });
+
+  // Handle connection state changes
+  embeddedServer.onClientJoined(() => {
+    console.log('Client connected!');
+    mainWindow?.webContents.send('connection-state', 'connected');
+  });
+
+  embeddedServer.onClientDisconnected(() => {
+    console.log('Client disconnected');
+    mainWindow?.webContents.send('connection-state', 'disconnected');
+  });
+}
+
+async function createRoomAndQR(serverUrl: string) {
+  if (!embeddedServer) return;
+
+  const roomCode = embeddedServer.createRoom();
+  console.log('Room created:', roomCode);
+
+  // Generate QR code with server URL and room code as query params
+  const remoteUrl = `${WEB_REMOTE_URL}?server=${encodeURIComponent(serverUrl)}&room=${roomCode}`;
+  const qrDataUrl = await generateQRCode(remoteUrl);
+
+  // Store room data
+  currentRoomData = { roomCode, qrDataUrl, remoteUrl, serverUrl };
+
+  // Send to renderer
+  mainWindow?.webContents.send('room-created', currentRoomData);
 }
 
 function handleRemoteMessage(message: any) {
@@ -149,7 +182,7 @@ function handleRemoteMessage(message: any) {
 }
 
 // Store current room data
-let currentRoomData: { roomCode: string; qrDataUrl: string; remoteUrl: string } | null = null;
+let currentRoomData: { roomCode: string; qrDataUrl: string; remoteUrl: string; serverUrl: string } | null = null;
 
 // IPC handlers
 ipcMain.handle('get-room-data', () => {
@@ -171,12 +204,9 @@ ipcMain.handle('update-osc-settings', (_: any, settings: { host: string; port: n
 });
 
 ipcMain.handle('regenerate-room', async () => {
-  if (signalingClient) {
-    const roomCode = await signalingClient.createRoom();
-    const remoteUrl = `${WEB_REMOTE_URL}/${roomCode}`;
-    const qrDataUrl = await generateQRCode(remoteUrl);
-
-    currentRoomData = { roomCode, qrDataUrl, remoteUrl };
+  if (embeddedServer && tunnelManager) {
+    const serverUrl = tunnelManager.getUrl() || `http://localhost:${LOCAL_PORT}`;
+    await createRoomAndQR(serverUrl);
     return currentRoomData;
   }
   return null;
@@ -201,5 +231,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  signalingClient?.disconnect();
+  tunnelManager?.disconnect();
+  embeddedServer?.stop();
 });
