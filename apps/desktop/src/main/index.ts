@@ -30,7 +30,9 @@ async function createWindow() {
   });
 
   // Load the renderer
-  if (process.env.NODE_ENV === 'development') {
+  // In development, use the Vite dev server; in production, use the built files
+  const isDev = !app.isPackaged;
+  if (isDev) {
     mainWindow.loadURL('http://localhost:5200');
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
