@@ -67,13 +67,17 @@ function calculateAcceleration(velocity: number, config: AccelerationConfig): nu
 }
 
 // Default acceleration configuration tuned for natural trackpad feel
+// Calibrated to match macOS/Windows pointer ballistics
 const DEFAULT_ACCELERATION: AccelerationConfig = {
-  minVelocityThreshold: 0.05,  // px/ms - below this, precision mode
-  maxVelocity: 2.0,            // px/ms - above this, max acceleration
-  curveExponent: 1.5,          // Slightly super-linear curve
+  minVelocityThreshold: 0.15,  // px/ms - below this, precision mode (higher = more precision)
+  maxVelocity: 1.5,            // px/ms - above this, max acceleration (lowered for smoother curve)
+  curveExponent: 1.2,          // Gentler curve for more predictable acceleration
   baseMultiplier: 1.0,         // Base output multiplier
-  maxAcceleration: 4.0,        // Maximum acceleration factor
+  maxAcceleration: 2.2,        // Maximum acceleration factor (reduced from 4.0 for accuracy)
 };
+
+// Minimum movement threshold to filter out jitter (in raw pixels)
+const MOVEMENT_DEAD_ZONE = 0.5;
 
 export function useTouch(options: UseTouchOptions) {
   const {
@@ -84,7 +88,7 @@ export function useTouch(options: UseTouchOptions) {
     onScroll,
     onLongPress,
     onTouchPosition,
-    sensitivity = 1.5,
+    sensitivity = 1.0,  // Default 1:1 sensitivity, let acceleration handle the curve
   } = options;
 
   const touchState = useRef<TouchState | null>(null);
@@ -179,6 +183,25 @@ export function useTouch(options: UseTouchOptions) {
       // Calculate raw delta
       const rawDx = touch.clientX - touchState.current.lastX;
       const rawDy = touch.clientY - touchState.current.lastY;
+
+      // Apply dead zone to filter out jitter and tiny movements
+      const rawMagnitude = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+      if (rawMagnitude < MOVEMENT_DEAD_ZONE) {
+        // Still update visual feedback and position tracking, but don't send movement
+        if (onTouchPosition) {
+          const rect = e.currentTarget.getBoundingClientRect();
+          onTouchPosition(
+            touch.clientX - rect.left,
+            touch.clientY - rect.top,
+            true
+          );
+        }
+        // Update position tracking to prevent accumulation jumps
+        touchState.current.lastX = touch.clientX;
+        touchState.current.lastY = touch.clientY;
+        touchState.current.lastMoveTime = now;
+        return;
+      }
 
       // Calculate time delta (minimum 1ms to avoid division by zero)
       const timeDelta = Math.max(now - touchState.current.lastMoveTime, 1);

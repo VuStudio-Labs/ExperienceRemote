@@ -2,6 +2,14 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTouch } from '../hooks/useTouch';
 
+// Haptic feedback utility
+function haptic(intensity: 'light' | 'medium' | 'heavy' = 'light') {
+  if ('vibrate' in navigator) {
+    const duration = intensity === 'light' ? 10 : intensity === 'medium' ? 20 : 30;
+    navigator.vibrate(duration);
+  }
+}
+
 interface TrackpadProps {
   onMove: (dx: number, dy: number) => void;
   onTap: () => void;
@@ -85,16 +93,18 @@ export function Trackpad({ onMove, onTap, onRightClick, onScroll }: TrackpadProp
       onMove(dx, dy);
     },
     onTap: () => {
+      haptic('light');
       onTap();
     },
     onTwoFingerTap: () => {
+      haptic('medium');
       onRightClick();
     },
     onScroll: (dx, dy) => {
       onScroll(dx, dy);
     },
     onTouchPosition: handleTouchPosition,
-    sensitivity: 1.2, // Adjusted for new acceleration curve
+    sensitivity: 1.0, // 1:1 base ratio, acceleration curve handles the rest
   });
 
   return (

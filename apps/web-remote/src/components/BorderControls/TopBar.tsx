@@ -1,5 +1,13 @@
 import { motion } from 'framer-motion';
 
+// Haptic feedback utility
+function haptic(intensity: 'light' | 'medium' | 'heavy' = 'light') {
+  if ('vibrate' in navigator) {
+    const duration = intensity === 'light' ? 10 : intensity === 'medium' ? 20 : 30;
+    navigator.vibrate(duration);
+  }
+}
+
 interface TopBarProps {
   onMediaAction: (action: 'play_pause' | 'prev' | 'next') => void;
   onVolumeChange: (delta: number) => void;
@@ -38,7 +46,10 @@ export function TopBar({ onMediaAction, onVolumeChange, onOSCTrigger }: TopBarPr
           <motion.button
             key={n}
             whileTap={{ scale: 0.9 }}
-            onClick={() => onOSCTrigger(n as 1 | 2 | 3)}
+            onClick={() => {
+              haptic('medium');
+              onOSCTrigger(n as 1 | 2 | 3);
+            }}
             className="w-10 h-10 rounded-lg bg-remote-accent/20 border border-remote-accent/30
                        text-remote-accent font-bold text-sm touch-feedback
                        active:bg-remote-accent/40"
@@ -60,10 +71,15 @@ function MediaButton({
   children: React.ReactNode;
   large?: boolean;
 }) {
+  const handleClick = () => {
+    haptic('light');
+    onClick();
+  };
+
   return (
     <motion.button
       whileTap={{ scale: 0.9 }}
-      onClick={onClick}
+      onClick={handleClick}
       className={`${
         large ? 'w-12 h-12' : 'w-10 h-10'
       } rounded-lg bg-white/5 border border-white/10

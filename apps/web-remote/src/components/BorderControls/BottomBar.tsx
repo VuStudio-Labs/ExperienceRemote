@@ -1,5 +1,13 @@
 import { motion } from 'framer-motion';
 
+// Haptic feedback utility
+function haptic(intensity: 'light' | 'medium' | 'heavy' = 'light') {
+  if ('vibrate' in navigator) {
+    const duration = intensity === 'light' ? 10 : intensity === 'medium' ? 20 : 30;
+    navigator.vibrate(duration);
+  }
+}
+
 interface BottomBarProps {
   onLeftClick: () => void;
   onRightClick: () => void;
@@ -53,10 +61,15 @@ export function BottomBar({
 }
 
 function ClickButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const handleClick = () => {
+    haptic('medium');
+    onClick();
+  };
+
   return (
     <motion.button
       whileTap={{ scale: 0.95 }}
-      onClick={onClick}
+      onClick={handleClick}
       className="flex-1 h-14 rounded-xl glass border border-remote-border
                  flex items-center justify-center text-white/80 font-medium
                  touch-feedback active:bg-white/10"
@@ -77,10 +90,15 @@ function ToggleButton({
   icon: React.ReactNode;
   label: string;
 }) {
+  const handleClick = () => {
+    haptic('light');
+    onClick();
+  };
+
   return (
     <motion.button
       whileTap={{ scale: 0.9 }}
-      onClick={onClick}
+      onClick={handleClick}
       className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg touch-feedback
         ${
           isActive
