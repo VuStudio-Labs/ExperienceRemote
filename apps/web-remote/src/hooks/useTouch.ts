@@ -10,19 +10,6 @@ interface TouchState {
   touchCount: number;
 }
 
-interface AccelerationConfig {
-  // Minimum velocity (px/ms) below which no acceleration is applied
-  minVelocityThreshold: number;
-  // Maximum velocity (px/ms) at which acceleration curve saturates
-  maxVelocity: number;
-  // Acceleration curve exponent (1 = linear, 2 = quadratic, etc.)
-  curveExponent: number;
-  // Base multiplier for output
-  baseMultiplier: number;
-  // Maximum acceleration factor
-  maxAcceleration: number;
-}
-
 interface UseTouchOptions {
   onMove?: (dx: number, dy: number) => void;
   onTap?: () => void;
@@ -35,49 +22,8 @@ interface UseTouchOptions {
   onTouchPosition?: (x: number, y: number, isActive: boolean) => void;
 }
 
-/**
- * Calculate acceleration factor based on velocity using a curve similar to macOS/Windows trackpads.
- *
- * The curve provides:
- * - Precise control at low speeds (minimal acceleration)
- * - Natural acceleration at medium speeds
- * - Capped acceleration at high speeds to prevent overshooting
- */
-function calculateAcceleration(velocity: number, config: AccelerationConfig): number {
-  // Below threshold, use minimal acceleration for precision
-  if (velocity < config.minVelocityThreshold) {
-    return config.baseMultiplier * 0.8;
-  }
-
-  // Normalize velocity to 0-1 range
-  const normalizedVelocity = Math.min(
-    (velocity - config.minVelocityThreshold) / (config.maxVelocity - config.minVelocityThreshold),
-    1
-  );
-
-  // Apply sigmoid-like curve for natural feel
-  // This approximates the "pointer ballistics" feel of modern trackpads
-  const curvedVelocity = Math.pow(normalizedVelocity, config.curveExponent);
-
-  // Calculate acceleration factor
-  const accelerationRange = config.maxAcceleration - config.baseMultiplier;
-  const acceleration = config.baseMultiplier + (curvedVelocity * accelerationRange);
-
-  return acceleration;
-}
-
-// Default acceleration configuration tuned for natural trackpad feel
-// Calibrated to match macOS/Windows pointer ballistics
-const DEFAULT_ACCELERATION: AccelerationConfig = {
-  minVelocityThreshold: 0.15,  // px/ms - below this, precision mode (higher = more precision)
-  maxVelocity: 1.5,            // px/ms - above this, max acceleration (lowered for smoother curve)
-  curveExponent: 1.2,          // Gentler curve for more predictable acceleration
-  baseMultiplier: 1.0,         // Base output multiplier
-  maxAcceleration: 2.2,        // Maximum acceleration factor (reduced from 4.0 for accuracy)
-};
-
 // Minimum movement threshold to filter out jitter (in raw pixels)
-const MOVEMENT_DEAD_ZONE = 0.5;
+const MOVEMENT_DEAD_ZONE = 1.0;  // Increased to filter more jitter
 
 export function useTouch(options: UseTouchOptions) {
   const {
@@ -88,17 +34,13 @@ export function useTouch(options: UseTouchOptions) {
     onScroll,
     onLongPress,
     onTouchPosition,
-    sensitivity = 1.0,  // Default 1:1 sensitivity, let acceleration handle the curve
+    sensitivity = 1.0,  // Default 1:1 sensitivity
   } = options;
 
   const touchState = useRef<TouchState | null>(null);
   const lastTapTime = useRef<number>(0);
   const longPressTimer = useRef<number | null>(null);
   const hasMoved = useRef(false);
-
-  // Velocity smoothing using exponential moving average
-  const velocityHistory = useRef<{ vx: number; vy: number }[]>([]);
-  const VELOCITY_HISTORY_SIZE = 3;
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimer.current) {
@@ -107,37 +49,11 @@ export function useTouch(options: UseTouchOptions) {
     }
   }, []);
 
-  // Calculate smoothed velocity from recent history
-  const getSmoothedVelocity = useCallback((currentVx: number, currentVy: number) => {
-    velocityHistory.current.push({ vx: currentVx, vy: currentVy });
-    if (velocityHistory.current.length > VELOCITY_HISTORY_SIZE) {
-      velocityHistory.current.shift();
-    }
-
-    // Weighted average with more recent values having higher weight
-    let totalWeight = 0;
-    let weightedVx = 0;
-    let weightedVy = 0;
-
-    velocityHistory.current.forEach((v, i) => {
-      const weight = i + 1; // More recent = higher weight
-      weightedVx += v.vx * weight;
-      weightedVy += v.vy * weight;
-      totalWeight += weight;
-    });
-
-    return {
-      vx: weightedVx / totalWeight,
-      vy: weightedVy / totalWeight,
-    };
-  }, []);
-
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
       e.preventDefault();
       const touch = e.touches[0];
       hasMoved.current = false;
-      velocityHistory.current = []; // Reset velocity history
 
       const now = Date.now();
       touchState.current = {
@@ -203,19 +119,10 @@ export function useTouch(options: UseTouchOptions) {
         return;
       }
 
-      // Calculate time delta (minimum 1ms to avoid division by zero)
-      const timeDelta = Math.max(now - touchState.current.lastMoveTime, 1);
-
-      // Get smoothed velocity for more stable acceleration
-      const smoothed = getSmoothedVelocity(rawDx / timeDelta, rawDy / timeDelta);
-      const smoothedVelocity = Math.sqrt(smoothed.vx * smoothed.vx + smoothed.vy * smoothed.vy);
-
-      // Calculate acceleration factor based on velocity
-      const accelerationFactor = calculateAcceleration(smoothedVelocity, DEFAULT_ACCELERATION);
-
-      // Apply acceleration and sensitivity
-      const dx = rawDx * accelerationFactor * sensitivity;
-      const dy = rawDy * accelerationFactor * sensitivity;
+      // Simple direct mapping - no acceleration, just sensitivity
+      // This gives predictable 1:1 control like a real mouse
+      const dx = rawDx * sensitivity;
+      const dy = rawDy * sensitivity;
 
       // Notify touch position for visual feedback
       if (onTouchPosition) {
@@ -246,7 +153,7 @@ export function useTouch(options: UseTouchOptions) {
       touchState.current.lastY = touch.clientY;
       touchState.current.lastMoveTime = now;
     },
-    [onMove, onScroll, sensitivity, clearLongPressTimer, getSmoothedVelocity, onTouchPosition]
+    [onMove, onScroll, sensitivity, clearLongPressTimer, onTouchPosition]
   );
 
   const handleTouchEnd = useCallback(

@@ -104,7 +104,7 @@ export function Trackpad({ onMove, onTap, onRightClick, onScroll }: TrackpadProp
       onScroll(dx, dy);
     },
     onTouchPosition: handleTouchPosition,
-    sensitivity: 1.0, // 1:1 base ratio, acceleration curve handles the rest
+    sensitivity: 1.5, // Slightly amplified for usability on small phone screens
   });
 
   return (

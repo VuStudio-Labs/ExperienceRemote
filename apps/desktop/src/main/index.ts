@@ -6,6 +6,23 @@ import { InputController } from './input';
 import { OSCSender } from './osc';
 import { generateQRCode } from './qr';
 
+// Safe logging to prevent EPIPE errors when stdout is closed
+function safeLog(...args: any[]) {
+  try {
+    console.log(...args);
+  } catch {
+    // Ignore write errors to closed pipes
+  }
+}
+
+function safeError(...args: any[]) {
+  try {
+    console.error(...args);
+  } catch {
+    // Ignore write errors to closed pipes
+  }
+}
+
 let mainWindow: BrowserWindow | null = null;
 let embeddedServer: EmbeddedSignalingServer | null = null;
 let tunnelManager: TunnelManager | null = null;
@@ -49,14 +66,14 @@ async function initializeServices() {
   try {
     inputController = new InputController();
   } catch (err) {
-    console.error('Failed to initialize input controller:', err);
+    safeError('Failed to initialize input controller:', err);
   }
 
   // Initialize OSC sender
   try {
     oscSender = new OSCSender('127.0.0.1', 9000);
   } catch (err) {
-    console.error('Failed to initialize OSC sender:', err);
+    safeError('Failed to initialize OSC sender:', err);
   }
 
   // Initialize embedded signaling server
@@ -64,9 +81,9 @@ async function initializeServices() {
 
   try {
     await embeddedServer.start();
-    console.log('Embedded signaling server started');
+    safeLog('Embedded signaling server started');
   } catch (err) {
-    console.error('Failed to start embedded server:', err);
+    safeError('Failed to start embedded server:', err);
     return;
   }
 
@@ -75,21 +92,21 @@ async function initializeServices() {
 
   try {
     const tunnelUrl = await tunnelManager.connect(LOCAL_PORT);
-    console.log('Tunnel connected:', tunnelUrl);
+    safeLog('Tunnel connected:', tunnelUrl);
 
     // Create room and generate QR code
     await createRoomAndQR(tunnelUrl);
 
     // Handle tunnel URL changes (reconnection)
     tunnelManager.onUrlChanged(async (newUrl) => {
-      console.log('Tunnel URL changed:', newUrl);
+      safeLog('Tunnel URL changed:', newUrl);
       await createRoomAndQR(newUrl);
     });
 
   } catch (err) {
-    console.error('Failed to create tunnel:', err);
+    safeError('Failed to create tunnel:', err);
     // Fall back to local-only mode
-    console.log('Running in local-only mode');
+    safeLog('Running in local-only mode');
     await createRoomAndQR(`http://localhost:${LOCAL_PORT}`);
   }
 
@@ -100,12 +117,12 @@ async function initializeServices() {
 
   // Handle connection state changes
   embeddedServer.onClientJoined(() => {
-    console.log('Client connected!');
+    safeLog('Client connected!');
     mainWindow?.webContents.send('connection-state', 'connected');
   });
 
   embeddedServer.onClientDisconnected(() => {
-    console.log('Client disconnected');
+    safeLog('Client disconnected');
     mainWindow?.webContents.send('connection-state', 'disconnected');
   });
 }
@@ -114,7 +131,7 @@ async function createRoomAndQR(serverUrl: string) {
   if (!embeddedServer) return;
 
   const roomCode = embeddedServer.createRoom();
-  console.log('Room created:', roomCode);
+  safeLog('Room created:', roomCode);
 
   // Generate QR code with server URL and room code as query params
   const remoteUrl = `${WEB_REMOTE_URL}?server=${encodeURIComponent(serverUrl)}&room=${roomCode}`;
@@ -177,10 +194,10 @@ function handleRemoteMessage(message: any) {
         break;
 
       default:
-        console.log('Unknown message type:', message.type);
+        safeLog('Unknown message type:', message.type);
     }
   } catch (err) {
-    console.error('Error handling message:', err);
+    safeError('Error handling message:', err);
   }
 }
 
